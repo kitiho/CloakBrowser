@@ -9,7 +9,11 @@ import {
   versionNewer,
 } from "../src/config.js";
 import {
+  binaryInfo,
+  checkForUpdate,
   checkWrapperUpdate,
+  clearCache,
+  ensureBinary,
   getLatestChromiumVersion,
   parseChecksums,
   resetWrapperUpdateChecked,
@@ -269,5 +273,55 @@ describe("effective version", () => {
   it("returns platform version when no marker exists", () => {
     // Default behavior — no marker file in test environment
     expect(getEffectiveVersion()).toBe(getChromiumVersion());
+  });
+});
+
+describe("ensureBinary", () => {
+  afterEach(() => {
+    delete process.env.CLOAKBROWSER_BINARY_PATH;
+  });
+
+  it("returns local override when set", async () => {
+    // Use this test file as a "binary" that exists
+    process.env.CLOAKBROWSER_BINARY_PATH = __filename;
+    const result = await ensureBinary();
+    expect(result).toBe(__filename);
+  });
+
+  it("throws when local override path missing", async () => {
+    process.env.CLOAKBROWSER_BINARY_PATH = "/nonexistent/chrome";
+    await expect(ensureBinary()).rejects.toThrow("does not exist");
+  });
+});
+
+describe("clearCache", () => {
+  it("does not throw when cache dir missing", () => {
+    const orig = process.env.CLOAKBROWSER_CACHE_DIR;
+    process.env.CLOAKBROWSER_CACHE_DIR = "/tmp/cloakbrowser-test-nonexistent";
+    expect(() => clearCache()).not.toThrow();
+    if (orig) {
+      process.env.CLOAKBROWSER_CACHE_DIR = orig;
+    } else {
+      delete process.env.CLOAKBROWSER_CACHE_DIR;
+    }
+  });
+});
+
+describe("checkForUpdate", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("returns null when no newer version", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => [],
+    } as Response);
+    expect(await checkForUpdate()).toBeNull();
+  });
+
+  it("returns null on network error", async () => {
+    vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("timeout"));
+    expect(await checkForUpdate()).toBeNull();
   });
 });

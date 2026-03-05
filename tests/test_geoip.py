@@ -7,6 +7,7 @@ import pytest
 from cloakbrowser.browser import _maybe_resolve_geoip
 from cloakbrowser.geoip import (
     COUNTRY_LOCALE_MAP,
+    _is_private_ip,
     _resolve_proxy_ip,
 )
 
@@ -136,3 +137,23 @@ def test_maybe_resolve_fills_both():
         tz, loc = _maybe_resolve_geoip(True, "http://proxy:8080", None, None)
         assert tz == "Europe/Berlin"
         assert loc == "de-DE"
+
+
+# ---------------------------------------------------------------------------
+# _is_private_ip
+# ---------------------------------------------------------------------------
+
+
+def test_private_ip_loopback():
+    assert _is_private_ip("127.0.0.1") is True
+
+
+def test_private_ip_rfc1918():
+    assert _is_private_ip("192.168.1.1") is True
+    assert _is_private_ip("10.0.0.1") is True
+    assert _is_private_ip("172.16.0.1") is True
+
+
+def test_private_ip_public():
+    assert _is_private_ip("8.8.8.8") is False
+    assert _is_private_ip("64.176.168.43") is False

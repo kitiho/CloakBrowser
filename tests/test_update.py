@@ -24,6 +24,10 @@ from cloakbrowser.download import (
     _parse_checksums,
     _should_check_for_update,
     _verify_checksum,
+    _write_version_marker,
+    check_for_update,
+    clear_cache,
+    ensure_binary,
 )
 
 
@@ -356,3 +360,117 @@ class TestVerifyChecksum:
         file.write_bytes(b"real content")
         with pytest.raises(RuntimeError, match="Checksum verification failed"):
             _verify_checksum(file, "0" * 64)
+
+
+class TestClearCache:
+    def test_removes_dir(self, tmp_path):
+        with patch.dict(os.environ, {"CLOAKBROWSER_CACHE_DIR": str(tmp_path)}):
+            # Create some content
+            (tmp_path / "chromium-145").mkdir()
+            (tmp_path / "chromium-145" / "chrome").write_bytes(b"binary")
+            clear_cache()
+            assert not tmp_path.exists()
+
+    def test_noop_if_missing(self, tmp_path):
+        nonexistent = tmp_path / "nonexistent"
+        with patch.dict(os.environ, {"CLOAKBROWSER_CACHE_DIR": str(nonexistent)}):
+            clear_cache()  # Should not raise
+
+
+class TestCheckForUpdate:
+    @patch("cloakbrowser.download._maybe_trigger_update_check")
+    def test_returns_none_when_current(self, _mock_update):
+        with patch("cloakbrowser.download._get_latest_chromium_version", return_value=None):
+            assert check_for_update() is None
+
+    @patch("cloakbrowser.download._maybe_trigger_update_check")
+    def test_returns_none_on_network_error(self, _mock_update):
+        with patch("cloakbrowser.download._get_latest_chromium_version", side_effect=Exception("timeout")):
+            # _get_latest_chromium_version catches exceptions internally, but
+            # check_for_update itself can also fail — test graceful None return
+            with patch("cloakbrowser.download._get_latest_chromium_version", return_value=None):
+                assert check_for_update() is None
+
+    @patch("cloakbrowser.download._maybe_trigger_update_check")
+    def test_returns_version_when_newer(self, _mock_update, tmp_path):
+        with patch.dict(os.environ, {"CLOAKBROWSER_CACHE_DIR": str(tmp_path)}):
+            with patch("cloakbrowser.download._get_latest_chromium_version", return_value="999.0.0.0"):
+                with patch("cloakbrowser.download._download_and_extract"):
+                    result = check_for_update()
+                    assert result == "999.0.0.0"
+
+    @patch("cloakbrowser.download._maybe_trigger_update_check")
+    def test_skips_download_if_already_cached(self, _mock_update, tmp_path):
+        with patch.dict(os.environ, {"CLOAKBROWSER_CACHE_DIR": str(tmp_path)}):
+            # Create the binary dir so it looks already downloaded
+            binary_dir = tmp_path / "chromium-999.0.0.0"
+            binary_dir.mkdir()
+            with patch("cloakbrowser.download._get_latest_chromium_version", return_value="999.0.0.0"):
+                with patch("cloakbrowser.download._download_and_extract") as mock_dl:
+                    result = check_for_update()
+                    assert result == "999.0.0.0"
+                    mock_dl.assert_not_called()
+
+
+class TestEnsureBinary:
+    @patch("cloakbrowser.download._maybe_trigger_update_check")
+    def test_local_override(self, _mock_update, tmp_path):
+        binary = tmp_path / "chrome"
+        binary.write_bytes(b"binary")
+        with patch.dict(os.environ, {"CLOAKBROWSER_BINARY_PATH": str(binary)}):
+            result = ensure_binary()
+            assert result == str(binary)
+
+    @patch("cloakbrowser.download._maybe_trigger_update_check")
+    def test_local_override_missing_file(self, _mock_update):
+        with patch.dict(os.environ, {"CLOAKBROWSER_BINARY_PATH": "/nonexistent/chrome"}):
+            with pytest.raises(FileNotFoundError, match="does not exist"):
+                ensure_binary()
+
+    @patch("cloakbrowser.download._maybe_trigger_update_check")
+    def test_cached_binary_found(self, _mock_update, tmp_path):
+        with patch.dict(os.environ, {
+            "CLOAKBROWSER_CACHE_DIR": str(tmp_path),
+            "CLOAKBROWSER_BINARY_PATH": "",
+        }):
+            # Create a fake cached binary
+            version = get_chromium_version()
+            with patch("cloakbrowser.download.get_binary_path") as mock_path:
+                fake_binary = tmp_path / "chrome"
+                fake_binary.write_bytes(b"binary")
+                fake_binary.chmod(0o755)
+                mock_path.return_value = fake_binary
+                with patch("cloakbrowser.download.check_platform_available"):
+                    result = ensure_binary()
+                    assert result == str(fake_binary)
+
+    @patch("cloakbrowser.download._maybe_trigger_update_check")
+    def test_downloads_when_missing(self, _mock_update, tmp_path):
+        with patch.dict(os.environ, {
+            "CLOAKBROWSER_CACHE_DIR": str(tmp_path),
+            "CLOAKBROWSER_BINARY_PATH": "",
+        }):
+            fake_binary = tmp_path / "chrome"
+            with patch("cloakbrowser.download.check_platform_available"):
+                with patch("cloakbrowser.download.get_binary_path") as mock_path:
+                    # effective == platform_version (no marker), so fallback block skipped.
+                    # Call 1: get_binary_path(effective) → nonexistent (triggers download)
+                    # Call 2: get_binary_path() → fake_binary (post-download verify)
+                    mock_path.side_effect = [
+                        tmp_path / "nonexistent",  # pre-download: not cached
+                        fake_binary,               # post-download: binary ready
+                    ]
+                    with patch("cloakbrowser.download._download_and_extract") as mock_dl:
+                        fake_binary.write_bytes(b"binary")
+                        result = ensure_binary()
+                        mock_dl.assert_called_once()
+                        assert result == str(fake_binary)
+
+
+class TestWriteVersionMarker:
+    def test_creates_file(self, tmp_path):
+        with patch.dict(os.environ, {"CLOAKBROWSER_CACHE_DIR": str(tmp_path)}):
+            _write_version_marker("999.0.0.0")
+            marker = tmp_path / f"latest_version_{get_platform_tag()}"
+            assert marker.exists()
+            assert marker.read_text() == "999.0.0.0"

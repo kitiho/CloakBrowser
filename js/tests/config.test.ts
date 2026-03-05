@@ -1,11 +1,13 @@
 import { describe, it, expect } from "vitest";
 import {
   CHROMIUM_VERSION,
+  getArchiveExt,
   getChromiumVersion,
   getDefaultStealthArgs,
   getCacheDir,
   getBinaryDir,
   getDownloadUrl,
+  getFallbackDownloadUrl,
 } from "../src/config.js";
 import { _buildArgsForTest, migrateTimezoneId } from "../src/playwright.js";
 
@@ -65,6 +67,28 @@ describe("config", () => {
     expect(url).toContain("cloakbrowser-");
     expect(url).toContain(".tar.gz");
     expect(url).toContain("cloakbrowser.dev");
+  });
+});
+
+describe("archive helpers", () => {
+  it("getArchiveExt returns correct extension for platform", () => {
+    const ext = getArchiveExt();
+    if (process.platform === "win32") {
+      expect(ext).toBe(".zip");
+    } else {
+      expect(ext).toBe(".tar.gz");
+    }
+  });
+
+  it("getFallbackDownloadUrl uses GitHub Releases", () => {
+    const url = getFallbackDownloadUrl("145.0.0.0");
+    expect(url).toContain("github.com/CloakHQ/cloakbrowser/releases/download");
+    expect(url).toContain("chromium-v145.0.0.0");
+  });
+
+  it("getFallbackDownloadUrl uses default version", () => {
+    const url = getFallbackDownloadUrl();
+    expect(url).toContain(`chromium-v${getChromiumVersion()}`);
   });
 });
 

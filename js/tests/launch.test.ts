@@ -1,6 +1,6 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { binaryInfo } from "../src/download.js";
-import { getChromiumVersion } from "../src/config.js";
+import { DEFAULT_VIEWPORT, getChromiumVersion } from "../src/config.js";
 
 describe("binaryInfo", () => {
   it("returns correct structure", () => {
@@ -37,3 +37,173 @@ describe.skipIf(!process.env.CLOAKBROWSER_BINARY_PATH)(
     }, 30_000);
   }
 );
+
+// ---------------------------------------------------------------------------
+// launchContext / launchPersistentContext unit tests (mock playwright-core)
+// ---------------------------------------------------------------------------
+
+describe("launchContext (unit)", () => {
+  let mockContext: any;
+  let mockBrowser: any;
+  let mockChromium: any;
+  const origEnv = process.env.CLOAKBROWSER_BINARY_PATH;
+
+  beforeEach(() => {
+    process.env.CLOAKBROWSER_BINARY_PATH = "/fake/chrome";
+    const origClose = vi.fn();
+    mockContext = { close: origClose, _origClose: origClose };
+    mockBrowser = {
+      newContext: vi.fn().mockResolvedValue(mockContext),
+      close: vi.fn(),
+    };
+    mockChromium = { launch: vi.fn().mockResolvedValue(mockBrowser) };
+
+    vi.doMock("playwright-core", () => ({ chromium: mockChromium }));
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.resetModules();
+    if (origEnv) {
+      process.env.CLOAKBROWSER_BINARY_PATH = origEnv;
+    } else {
+      delete process.env.CLOAKBROWSER_BINARY_PATH;
+    }
+  });
+
+  it("applies DEFAULT_VIEWPORT when no viewport given", async () => {
+    const { launchContext } = await import("../src/playwright.js");
+    await launchContext();
+
+    const ctxArgs = mockBrowser.newContext.mock.calls[0][0];
+    expect(ctxArgs.viewport).toEqual(DEFAULT_VIEWPORT);
+  });
+
+  it("uses custom viewport when provided", async () => {
+    const { launchContext } = await import("../src/playwright.js");
+    const custom = { width: 1280, height: 720 };
+    await launchContext({ viewport: custom });
+
+    const ctxArgs = mockBrowser.newContext.mock.calls[0][0];
+    expect(ctxArgs.viewport).toEqual(custom);
+  });
+
+  it("forwards userAgent to newContext", async () => {
+    const { launchContext } = await import("../src/playwright.js");
+    await launchContext({ userAgent: "Custom/1.0" });
+
+    const ctxArgs = mockBrowser.newContext.mock.calls[0][0];
+    expect(ctxArgs.userAgent).toBe("Custom/1.0");
+  });
+
+  it("passes timezone to context timezoneId, not to launch", async () => {
+    const { launchContext } = await import("../src/playwright.js");
+    await launchContext({ timezone: "America/New_York" });
+
+    // launch() called with timezone: undefined (skipped for binary flag)
+    const launchArgs = mockChromium.launch.mock.calls[0][0];
+    const hasTimezoneFlag = launchArgs.args.some((a: string) =>
+      a.startsWith("--fingerprint-timezone=")
+    );
+    expect(hasTimezoneFlag).toBe(false);
+
+    // newContext() gets timezoneId
+    const ctxArgs = mockBrowser.newContext.mock.calls[0][0];
+    expect(ctxArgs.timezoneId).toBe("America/New_York");
+  });
+
+  it("forwards colorScheme to newContext", async () => {
+    const { launchContext } = await import("../src/playwright.js");
+    await launchContext({ colorScheme: "dark" });
+
+    const ctxArgs = mockBrowser.newContext.mock.calls[0][0];
+    expect(ctxArgs.colorScheme).toBe("dark");
+  });
+
+  it("close() also closes browser", async () => {
+    const { launchContext } = await import("../src/playwright.js");
+    const ctx = await launchContext();
+
+    await ctx.close();
+    // Original context close called
+    expect(mockContext._origClose).toHaveBeenCalledOnce();
+    // Browser also closed
+    expect(mockBrowser.close).toHaveBeenCalledOnce();
+  });
+});
+
+describe("launchPersistentContext (unit)", () => {
+  let mockContext: any;
+  let mockChromium: any;
+  const origEnv = process.env.CLOAKBROWSER_BINARY_PATH;
+
+  beforeEach(() => {
+    process.env.CLOAKBROWSER_BINARY_PATH = "/fake/chrome";
+    mockContext = { close: vi.fn(), pages: vi.fn().mockReturnValue([]) };
+    mockChromium = {
+      launchPersistentContext: vi.fn().mockResolvedValue(mockContext),
+    };
+
+    vi.doMock("playwright-core", () => ({ chromium: mockChromium }));
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.resetModules();
+    if (origEnv) {
+      process.env.CLOAKBROWSER_BINARY_PATH = origEnv;
+    } else {
+      delete process.env.CLOAKBROWSER_BINARY_PATH;
+    }
+  });
+
+  it("applies DEFAULT_VIEWPORT", async () => {
+    const { launchPersistentContext } = await import("../src/playwright.js");
+    await launchPersistentContext({ userDataDir: "/tmp/profile" });
+
+    const args = mockChromium.launchPersistentContext.mock.calls[0][1];
+    expect(args.viewport).toEqual(DEFAULT_VIEWPORT);
+  });
+
+  it("passes timezone and locale to context", async () => {
+    const { launchPersistentContext } = await import("../src/playwright.js");
+    await launchPersistentContext({
+      userDataDir: "/tmp/profile",
+      timezone: "Asia/Tokyo",
+      locale: "ja-JP",
+    });
+
+    const args = mockChromium.launchPersistentContext.mock.calls[0][1];
+    expect(args.timezoneId).toBe("Asia/Tokyo");
+    expect(args.locale).toBe("ja-JP");
+    // Also in binary args
+    expect(args.args).toContain("--fingerprint-timezone=Asia/Tokyo");
+    expect(args.args).toContain("--lang=ja-JP");
+  });
+
+  it("forwards proxy string", async () => {
+    const { launchPersistentContext } = await import("../src/playwright.js");
+    await launchPersistentContext({
+      userDataDir: "/tmp/profile",
+      proxy: "http://user:pass@proxy:8080",
+    });
+
+    const args = mockChromium.launchPersistentContext.mock.calls[0][1];
+    expect(args.proxy.server).toBe("http://proxy:8080");
+    expect(args.proxy.username).toBe("user");
+    expect(args.proxy.password).toBe("pass");
+  });
+
+  it("forwards userAgent and colorScheme", async () => {
+    const { launchPersistentContext } = await import("../src/playwright.js");
+    await launchPersistentContext({
+      userDataDir: "/tmp/profile",
+      userAgent: "Custom/1.0",
+      colorScheme: "dark",
+    });
+
+    const args = mockChromium.launchPersistentContext.mock.calls[0][1];
+    expect(args.userAgent).toBe("Custom/1.0");
+    expect(args.colorScheme).toBe("dark");
+  });
+});
