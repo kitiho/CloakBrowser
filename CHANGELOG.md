@@ -6,6 +6,18 @@ Changes are tagged: **[wrapper]** for Python/JS wrapper, **[binary]** for Chromi
 
 ---
 
+## [0.3.11] — 2026-03-08
+
+- **[wrapper]** `humanize=True` — human-like mouse (Bézier curves, overshoot), keyboard (per-character timing, thinking pauses), scroll (accelerate/cruise/decelerate), and click behavior. Two presets: `default` and `careful`. Works in Python and JS. (thanks [@evelaa123](https://github.com/evelaa123))
+- **[binary]** CDP input stealth — 4 new source-level C++ patches removing automation signals from input events
+- **[binary]** Support `--remote-debugging-address` flag for CDP bind address — eliminates the socat workaround in `cloakserve` Docker mode
+- **[wrapper]** `cloakserve` updated to use `--remote-debugging-address=0.0.0.0` directly — socat dependency removed from Docker image
+- **[binary]** GPU fingerprint accuracy improvements — renderer suffix strings now match real Chrome output across Windows and Linux profiles
+- **[binary]** GPU capability accuracy fix for NVIDIA profiles — spoofed values now reflect actual hardware limits
+- **[binary]** macOS GPU accuracy fix — GPU model database reference corrected for Apple Silicon profiles
+- **[binary]** Fix CDP input synthesis — a guard condition prevented the patch from activating; now fires correctly on all input events
+- **[binary]** Code quality hardening across patches — correctness and reliability fixes
+
 ## [0.3.10] — 2026-03-07
 
 - **[binary]** Upgrade Linux build to 145.0.7632.159.2

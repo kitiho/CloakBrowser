@@ -35,7 +35,8 @@ Drop-in Playwright/Puppeteer replacement for Python and JavaScript.<br>
 Same API, same code — just swap the import. <strong>3 lines of code, 30 seconds to unblock.</strong>
 </p>
 
-- **26 source-level C++ patches** — canvas, WebGL, audio, fonts, GPU, screen, automation signals
+- **31 source-level C++ patches** — canvas, WebGL, audio, fonts, GPU, screen, automation signals, CDP input behavior
+- **`humanize=True`** — human-like mouse curves, keyboard timing, and scroll patterns. One flag, behavioral detection passes
 - **0.9 reCAPTCHA v3 score** — human-level, server-verified
 - **Passes Cloudflare Turnstile**, FingerprintJS, BrowserScan — tested against 30+ detection sites
 - **Auto-updating binary** — background update checks, always on the latest stealth build
@@ -108,13 +109,14 @@ page.goto("https://example.com")
 
 > ⭐ **Star** to show support — **[Watch releases](https://github.com/CloakHQ/CloakBrowser/subscription)** to get notified when new builds drop.
 
-## Latest: v0.3.10 (Chromium 145.0.7632.159.2)
+## Latest: v0.3.11 (Chromium 145.0.7632.159.2)
 
+- **`humanize=True`** — one flag makes all mouse, keyboard, and scroll interactions behave like a real user. Bézier curves, per-character typing, realistic scroll patterns. Two presets: `default` and `careful`
+- **CDP input behavior mimicking** — input events sent via CDP now produce the same signals as real user interactions. 5 new source-level patches covering pointer, keyboard, and mouse behavior
+- **`cloakserve` CDP server** — no longer requires socat. Chrome binds directly to `0.0.0.0:9222` via native flag support
+- **31 fingerprint patches** (Linux x64) — 5 new patches since v0.3.10, plus GPU fingerprint accuracy fixes for NVIDIA and Apple Silicon profiles
 - **All 4 platforms** — Linux x64, macOS arm64, macOS x64, and Windows x64 all on Chromium 145
-- **26 fingerprint patches** — 10 new patches since v142 (screen, device memory, audio, WebGL, auto-spoof, and more)
 - **Stealthy with zero flags** — binary auto-generates a random fingerprint seed at startup. No configuration required
-- **Full stealth audit** — every patch reviewed for detection vectors, multiple fixes shipped
-- **CDP hardening** — audited and patched known automation detection vectors
 - **Timezone & locale from proxy IP** — `launch(proxy="...", geoip=True)` auto-detects timezone and locale
 - **Playwright + Puppeteer from one package** — `import from 'cloakbrowser'` or `import from 'cloakbrowser/puppeteer'`. Same binary, your choice of API
 - **Persistent profiles** — `launch_persistent_context()` keeps cookies and localStorage across sessions, bypasses incognito detection
@@ -196,7 +198,7 @@ CloakBrowser is a thin wrapper (Python + JavaScript) around a custom-built Chrom
 3. **Every launch** → Playwright or Puppeteer starts with our binary + stealth args
 4. **You write code** → standard Playwright/Puppeteer API, nothing new to learn
 
-The binary includes 26 source-level patches covering canvas, WebGL, audio, fonts, GPU, screen properties, hardware reporting, and automation signal removal.
+The binary includes 31 source-level patches covering canvas, WebGL, audio, fonts, GPU, screen properties, hardware reporting, automation signal removal, and CDP input behavior mimicking.
 
 These are compiled into the Chromium binary — not injected via JavaScript, not set via flags.
 
@@ -232,6 +234,12 @@ browser = launch(proxy="http://proxy:8080", geoip=True)
 
 # Explicit timezone/locale always win over auto-detection
 browser = launch(proxy="http://proxy:8080", geoip=True, timezone="Europe/London")
+
+# Human-like mouse, keyboard, and scroll behavior
+browser = launch(humanize=True)
+
+# With slower, more deliberate movements
+browser = launch(humanize=True, human_preset="careful")
 
 # Without default stealth args (bring your own fingerprint flags)
 browser = launch(stealth_args=False, args=["--fingerprint=12345"])
@@ -335,6 +343,7 @@ const browser = await launch({
   args: ['--fingerprint=12345'],
   timezone: 'America/New_York',
   locale: 'en-US',
+  humanize: true,
 });
 
 // Convenience: browser + context in one call
@@ -385,6 +394,69 @@ console.log(binaryInfo());
 // Force re-download
 clearCache();
 ```
+
+## Human Behavior
+
+Pass `humanize=True` to make all mouse, keyboard, and scroll interactions indistinguishable from real users. All Playwright calls — `page.click()`, `page.fill()`, `page.type()`, `page.mouse.*`, `page.keyboard.*`, and the full Locator API — are automatically replaced with human-like equivalents. No code changes needed.
+
+```python
+browser = launch(humanize=True)
+page = browser.new_page()
+page.goto("https://example.com")
+page.locator("#email").fill("user@example.com")  # per-character timing, thinking pauses
+page.locator("button[type=submit]").click()       # Bézier curve, realistic aim point
+```
+
+```javascript
+const browser = await launch({ humanize: true });
+```
+
+**What changes:**
+
+| Interaction | Default | With `humanize=True` |
+|---|---|---|
+| Mouse movement | Instant teleport | Bézier curve with easing and slight overshoot |
+| Clicks | Instant | Realistic aim point + hold duration |
+| Keyboard | Instant fill | Per-character timing, thinking pauses, occasional typos with self-correction |
+| Scroll | Jump | Accelerate → cruise → decelerate micro-steps |
+| `fill()` | Instant value set | Clears existing content, types character by character |
+
+**Presets** — `default` (normal speed) or `careful` (slower, more deliberate, idle micro-movements between actions):
+
+```python
+browser = launch(humanize=True, human_preset="careful")
+```
+
+```javascript
+const browser = await launch({ humanize: true, humanPreset: 'careful' });
+```
+
+**Custom config** — override any parameter:
+
+```python
+browser = launch(humanize=True, human_config={
+    "mistype_chance": 0.05,              # 5% typo rate with self-correction
+    "typing_delay": 100,                 # slower typing (ms per character)
+    "idle_between_actions": True,        # micro-movements between clicks
+    "idle_between_duration": [0.3, 0.8], # idle duration range (seconds)
+})
+```
+
+```javascript
+const browser = await launch({
+    humanize: true,
+    humanConfig: {
+        mistype_chance: 0.05,
+        typing_delay: 100,
+        idle_between_actions: true,
+        idle_between_duration: [0.3, 0.8],
+    }
+});
+```
+
+Access the original un-patched Playwright page at `page._original` if you need raw speed for a specific call.
+
+> Contributed by [@evelaa123](https://github.com/evelaa123) — full Playwright API coverage.
 
 ## Configuration
 
@@ -495,7 +567,7 @@ browser = launch(args=[
 
 | Platform | Chromium | Patches | Status |
 |---|---|---|---|
-| Linux x86_64 | 145 | 26 | ✅ Latest |
+| Linux x86_64 | 145 | 31 | ✅ Latest |
 | macOS arm64 (Apple Silicon) | 145 | 26 | ✅ Latest |
 | macOS x86_64 (Intel) | 145 | 26 | ✅ Latest |
 | Windows x86_64 | 145 | 26 | ✅ Latest |
@@ -786,7 +858,7 @@ await new Promise(r => setTimeout(r, 3000));
 ```
 
 Other tips for maximizing reCAPTCHA scores:
-- **Try the Patchright backend** — suppresses CDP automation signals that reCAPTCHA Enterprise detects. Install with `pip install cloakbrowser[patchright]`, then use `launch(backend="patchright")` or set `CLOAKBROWSER_BACKEND=patchright` globally. Note: Patchright breaks proxy auth and `add_init_script` — only use it when you need the extra CDP stealth
+- **Try the Patchright backend** — suppresses additional CDP automation signals at the Playwright protocol layer. Install with `pip install cloakbrowser[patchright]`, then use `launch(backend="patchright")` or set `CLOAKBROWSER_BACKEND=patchright` globally. Note: Patchright breaks proxy auth and `add_init_script` — only use it if you're still seeing low scores after trying the steps above
 - **Use Playwright, not Puppeteer** — Puppeteer sends more CDP protocol traffic that reCAPTCHA detects ([details](#puppeteer))
 - **Use residential proxies** — datacenter IPs are flagged by IP reputation, not browser fingerprint
 - **Spend 15+ seconds on the page** before triggering reCAPTCHA — short visits score lower
@@ -832,6 +904,19 @@ A: Yes. Pass `proxy="http://user:pass@host:port"` to `launch()`.
 - 📦 **npm** — [npmjs.com/package/cloakbrowser](https://www.npmjs.com/package/cloakbrowser)
 - 📧 **Contact** — cloakhq@pm.me
 
+## Security
+
+All binary releases are GPG-signed and include GitHub artifact attestations for supply chain verification.
+
+```bash
+# Verify GPG signature
+gpg --keyserver keyserver.ubuntu.com --recv-keys C60C0DDC9D0DE2DD
+git verify-tag chromium-v145.0.7632.159.3
+
+# Verify binary attestation
+gh attestation verify cloakbrowser-linux-x64.tar.gz --repo CloakHQ/cloakbrowser
+```
+
 ## License
 
 - **Wrapper code** (this repository) — MIT. See [LICENSE](https://github.com/CloakHQ/CloakBrowser/blob/main/LICENSE).
@@ -840,3 +925,8 @@ A: Yes. Pass `proxy="http://user:pass@host:port"` to `launch()`.
 ## Contributing
 
 Issues and PRs welcome. If something isn't working, [open an issue](https://github.com/CloakHQ/CloakBrowser/issues) — we respond fast.
+
+## Contributors
+
+- [@evelaa123](https://github.com/evelaa123) — humanize behavior, persistent contexts, Windows fix
+- [@yahooguntu](https://github.com/yahooguntu) — persistent contexts
