@@ -313,6 +313,17 @@ Supports all the same options as `launch_context()`: `proxy`, `user_agent`, `vie
 
 Async version: `launch_persistent_context_async()`.
 
+### CLI
+
+Pre-download the binary or check installation status from the command line:
+
+```bash
+python -m cloakbrowser install      # Download binary with progress output
+python -m cloakbrowser info         # Show version, path, platform
+python -m cloakbrowser update       # Check for and download newer binary
+python -m cloakbrowser clear-cache  # Remove cached binaries
+```
+
 ### Utility Functions
 
 ```python
@@ -704,6 +715,15 @@ Run again with the same volume — cookies, localStorage, and cache are restored
 FROM cloakhq/cloakbrowser
 COPY your_script.py /app/
 CMD ["python", "your_script.py"]
+```
+
+**Building your own image from pip** — use `python -m cloakbrowser install` to download the binary during build with visible progress:
+
+```dockerfile
+FROM python:3.12-slim
+RUN pip install cloakbrowser && python -m cloakbrowser install
+COPY your_script.py /app/
+CMD ["python", "/app/your_script.py"]
 ```
 
 **Building from source** — a [`Dockerfile`](Dockerfile) is also included if you prefer to build your own image:

@@ -133,6 +133,17 @@ const browser = await launch({ proxy: 'http://proxy:8080', geoip: true, timezone
 
 > **Note:** For rotating residential proxies, the DNS-resolved IP may differ from the exit IP. Pass explicit `timezone`/`locale` in those cases.
 
+### CLI
+
+Pre-download the binary or check installation status from the command line:
+
+```bash
+npx cloakbrowser install      # Download binary with progress output
+npx cloakbrowser info         # Show version, path, platform
+npx cloakbrowser update       # Check for and download newer binary
+npx cloakbrowser clear-cache  # Remove cached binaries
+```
+
 ### Utilities
 
 ```javascript
