@@ -6,6 +6,19 @@ Changes are tagged: **[wrapper]** for Python/JS wrapper, **[binary]** for Chromi
 
 ---
 
+## [0.3.19] — 2026-03-30
+
+- **[binary]** Upgrade Linux x64 build to 145.0.7632.159.8 — 42 source-level C++ patches (up from 33)
+- **[binary]** 9 new fingerprint patches covering additional browser APIs and cross-platform consistency
+- **[binary]** New `--fingerprint-noise` flag — disable noise injection while keeping deterministic fingerprint seed active
+- **[binary]** Improved fingerprint noise reliability and determinism across all patched APIs
+- **[binary]** Expanded platform-aware fingerprint spoofing for more realistic cross-platform profiles
+- **[binary]** Font rendering and detection accuracy improvements for Windows profiles
+- **[binary]** Removed experimental patches that caused compatibility issues with certain anti-bot systems
+- **[binary]** Docker/VNC environment compatibility improvements
+- **[wrapper]** Fix Playwright cleanup — `pw.stop()` now runs even if `browser.close()` raises or is cancelled (fixes #60, thanks [@dgtlmoon](https://github.com/dgtlmoon))
+- **[meta]** Pin GitHub Actions to commit SHAs, add Dependabot for automated dependency updates
+
 ## [0.3.18] — 2026-03-15
 
 - **[wrapper]** Fix welcome banner printing to stdout — now writes to stderr so it won't corrupt JSON output in programmatic usage (fixes #59)
