@@ -168,7 +168,7 @@ export async function launchPersistentContext(
       ? { proxy: typeof options.proxy === "string" ? parseProxyUrl(options.proxy) : options.proxy }
       : {}),
     ...(options.userAgent ? { userAgent: options.userAgent } : {}),
-    viewport: options.viewport ?? DEFAULT_VIEWPORT,
+    viewport: options.viewport === undefined ? DEFAULT_VIEWPORT : options.viewport,
     ...(options.colorScheme ? { colorScheme: options.colorScheme } : {}),
     ...options.launchOptions,
   });
